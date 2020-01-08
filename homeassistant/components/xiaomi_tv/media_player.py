@@ -15,6 +15,7 @@ from homeassistant.const import CONF_HOST, CONF_NAME, STATE_OFF, STATE_ON
 import homeassistant.helpers.config_validation as cv
 
 DEFAULT_NAME = "Xiaomi TV"
+CONF_ASSUME_STATE = "assume_state"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Optional(CONF_HOST): cv.string,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+        vol.Optional(CONF_ASSUME_STATE, default=True): cv.boolean,
     }
 )
 
@@ -37,25 +39,26 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     # If a hostname is set. Discovery is skipped.
     host = config.get(CONF_HOST)
     name = config.get(CONF_NAME)
+    assume_state = config.get(CONF_ASSUME_STATE)
 
     if host is not None:
         # Register TV with Home Assistant.
-        async_add_entities([XiaomiTV(host, name)])
+        async_add_entities([XiaomiTV(host, name, assume_state)])
     else:
         # Otherwise, discover TVs on network.
         async_add_entities(
-            XiaomiTV(tv, DEFAULT_NAME) for tv in pymitv.Discover().scan()
+            XiaomiTV(tv, DEFAULT_NAME, assume_state) for tv in pymitv.Discover().scan()
         )
 
 
 class XiaomiTV(MediaPlayerDevice):
     """Represent the Xiaomi TV for Home Assistant."""
 
-    def __init__(self, ip, name):
+    def __init__(self, ip, name, assume_state):
         """Receive IP address and name to construct class."""
 
         # Initialize the Xiaomi TV.
-        self._tv = pymitv.TV(ip)
+        self._tv = pymitv.TV(ip, assume_state=assume_state)
         # Default name value, only to be overridden by user.
         self._name = name
         self._state = STATE_OFF
@@ -71,12 +74,19 @@ class XiaomiTV(MediaPlayerDevice):
     @property
     def state(self):
         """Return _state variable, containing the appropriate constant."""
-        return self._state
+        if self._tv.assume_state:
+            return self._state
+        else:
+            if self._tv.is_on:
+                self._state = STATE_ON
+            else:
+                self._state = STATE_OFF
+            return self._state
 
     @property
     def assumed_state(self):
         """Indicate that state is assumed."""
-        return True
+        return self._tv.assume_state
 
     @property
     def supported_features(self):
@@ -112,16 +122,21 @@ class XiaomiTV(MediaPlayerDevice):
         would be unable to turn the TV back on, unless it's done manually.
         """
         if self._state is not STATE_OFF:
-            self._tv.sleep()
-
-            self._state = STATE_OFF
+            if self._tv.assume_state:
+                self._tv.sleep()
+                self._state = STATE_OFF
+            else:
+                self._tv.turn_off()
 
     def turn_on(self):
         """Wake the TV back up from sleep."""
         if self._state is not STATE_ON:
-            self._tv.wake()
+            if self._tv.assume_state:
+                self._tv.wake()
 
-            self._state = STATE_ON
+                self._state = STATE_ON
+            else:
+                self._tv.turn_on()
 
     def volume_up(self):
         """Increase volume by one."""

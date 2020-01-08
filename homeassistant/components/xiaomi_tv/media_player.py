@@ -30,7 +30,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
-def setup_platform(hass, config, add_entities, discovery_info=None):
+
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Xiaomi TV platform."""
 
     # If a hostname is set. Discovery is skipped.
@@ -38,15 +39,13 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     name = config.get(CONF_NAME)
 
     if host is not None:
-        # Check if there's a valid TV at the IP address.
-        if not pymitv.Discover().check_ip(host):
-            _LOGGER.error("Could not find Xiaomi TV with specified IP: %s", host)
-        else:
-            # Register TV with Home Assistant.
-            add_entities([XiaomiTV(host, name)])
+        # Register TV with Home Assistant.
+        async_add_entities([XiaomiTV(host, name)])
     else:
         # Otherwise, discover TVs on network.
-        add_entities(XiaomiTV(tv, DEFAULT_NAME) for tv in pymitv.Discover().scan())
+        async_add_entities(
+            XiaomiTV(tv, DEFAULT_NAME) for tv in pymitv.Discover().scan()
+        )
 
 
 class XiaomiTV(MediaPlayerDevice):
